@@ -109,6 +109,8 @@ hardware_interface::CallbackReturn SparkCanHardware::on_configure(
     "Configuring %zu SPARK MAXs on interface '%s'...",
     wheels_.size(), can_interface_.c_str());
 
+  size_t online_count = 0;
+
   for (auto & wheel : wheels_) {
     try {
       // Construct the sparkcan object.
@@ -152,8 +154,23 @@ hardware_interface::CallbackReturn SparkCanHardware::on_configure(
       // Clear any lingering faults from previous sessions
       wheel.spark->ClearStickyFaults();
 
-      RCLCPP_INFO(rclcpp::get_logger("SparkCanHardware"),
-        "  CAN %d (%s): configured OK", wheel.can_id, wheel.joint_name.c_str());
+      // Presence check: ReadFirmwareVersion blocks ~20ms waiting for a
+      // response from this specific device ID. Setter calls above can't
+      // detect a missing device (CAN ACKs are bus-wide, not per-recipient),
+      // so this is the first call that proves the SPARK is actually there.
+      auto fw = wheel.spark->ReadFirmwareVersion();
+      if (fw.has_value()) {
+        auto [major, minor, patch, build, debug] = *fw;
+        RCLCPP_INFO(rclcpp::get_logger("SparkCanHardware"),
+          "  CAN %d (%s): ONLINE — fw %u.%u.%u%s",
+          wheel.can_id, wheel.joint_name.c_str(),
+          major, minor, patch, debug ? " (debug)" : "");
+        ++online_count;
+      } else {
+        RCLCPP_WARN(rclcpp::get_logger("SparkCanHardware"),
+          "  CAN %d (%s): OFFLINE — no firmware response (device not on bus?)",
+          wheel.can_id, wheel.joint_name.c_str());
+      }
 
     } catch (const std::exception & e) {
       RCLCPP_ERROR(rclcpp::get_logger("SparkCanHardware"),
@@ -161,6 +178,10 @@ hardware_interface::CallbackReturn SparkCanHardware::on_configure(
       return hardware_interface::CallbackReturn::ERROR;
     }
   }
+
+  RCLCPP_INFO(rclcpp::get_logger("SparkCanHardware"),
+    "Configure complete: %zu/%zu SPARK MAXs responding.",
+    online_count, wheels_.size());
 
   return hardware_interface::CallbackReturn::SUCCESS;
 }

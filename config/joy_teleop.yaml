@@ -5,11 +5,11 @@
 # Wired Xbox controller axis/button map on Linux (xpad driver):
 #
 #   Axes:                         Buttons:
-#     0  Left stick X               0  A
+#     0  Left stick X               0  A   ← deadman (enable)
 #     1  Left stick Y               1  B
 #     2  Left trigger (1→-1)        2  X
 #     3  Right stick X              3  Y
-#     4  Right stick Y              4  LB  ← deadman (enable)
+#     4  Right stick Y              4  LB
 #     5  Right trigger (1→-1)       5  RB  ← turbo
 #     6  D-pad X                    6  Back
 #     7  D-pad Y                    7  Start
@@ -36,8 +36,8 @@ teleop_twist_joy_node:
       yaw: 0                  # left stick X  (push left = positive turn)
 
     # --- Speed scales ---
-    # Normal mode (LB held): gentle driving for precision tasks.
-    # Turbo mode  (LB + RB held): near-max speed.
+    # Normal mode (A held): gentle driving for precision tasks.
+    # Turbo mode  (A + RB held): near-max speed.
     #
     # Physics limits with 81:1 + NEO V1.1:
     #   theoretical max linear  ≈ 0.70 m/s
@@ -52,9 +52,9 @@ teleop_twist_joy_node:
       yaw: 1.4                # rad/s — turbo turn rate
 
     # --- Deadman / enable ---
-    # MUST hold LB to move. Release = instant zero-velocity publish.
-    enable_button: 4           # LB
-    enable_turbo_button: 5     # RB (hold BOTH LB+RB for turbo)
+    # MUST hold A to move. Release = instant zero-velocity publish.
+    enable_button: 0           # A
+    enable_turbo_button: 5     # RB (hold BOTH A+RB for turbo)
     require_enable_button: true
 
     # Publish cmd_vel as unstamped Twist (matches diff_drive_controller default)
