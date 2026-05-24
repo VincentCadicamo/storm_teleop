@@ -35,6 +35,12 @@ diff_drive_controller:
     left_wheel_radius_multiplier: 1.0
     right_wheel_radius_multiplier: 1.0
 
+    # --- Input topic mode ---
+    # diff_drive_controller defaults to TwistStamped on ~/cmd_vel.
+    # teleop_twist_joy publishes plain Twist, so subscribe to ~/cmd_vel_unstamped
+    # instead. The launch file remaps teleop's cmd_vel to this topic.
+    use_stamped_vel: false
+
     # --- Command timeout (SAFETY) ---
     # If no /cmd_vel arrives within this window, command zero velocity.
     # This is the comms-loss failsafe: if WiFi drops (future base-station

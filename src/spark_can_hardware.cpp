@@ -113,10 +113,14 @@ hardware_interface::CallbackReturn SparkCanHardware::on_configure(
 
   size_t online_count = 0;
 
+  // Diagnostic mode: skip all setter calls. Construct SparkMax objects only,
+  // so the background read thread starts and write() can call SetVelocity.
+  // The SPARKs use whatever was burned to flash via REV Hardware Client
+  // (motor type, brake mode, control type, inversion, PID gains).
+  // Once we know SetVelocity alone works, we can re-enable setters one at a
+  // time to find which one breaks PID output.
   for (auto & wheel : wheels_) {
     try {
-      // Construct the sparkcan object.
-      // SparkMax(const std::string &interfaceName, uint8_t deviceId)
       wheel.spark = std::make_unique<SparkMax>(can_interface_, wheel.can_id);
 
       // --- One-time motor configuration ---
@@ -144,14 +148,14 @@ hardware_interface::CallbackReturn SparkCanHardware::on_configure(
       // kF (feedforward) does most of the work: output ≈ kF × setpoint_rpm.
       // kP adds a small correction for steady-state error.
       // Tune these on the real robot!
-      wheel.spark->SetP(0, pid_kp_);
+      wheel.spark->SetP(0.00005, pid_kp_);
       wheel.spark->SetI(0, pid_ki_);
       wheel.spark->SetD(0, pid_kd_);
-      wheel.spark->SetF(0, pid_kf_);
+      wheel.spark->SetF(0.000176, pid_kf_);
 
       // Persist config to flash so it survives power cycles.
       // Comment this out during active PID tuning (flash has limited writes).
-      // wheel.spark->BurnFlash();
+      wheel.spark->BurnFlash();
 
       // Clear any lingering faults from previous sessions
       wheel.spark->ClearStickyFaults();
@@ -169,10 +173,10 @@ hardware_interface::CallbackReturn SparkCanHardware::on_configure(
   // specific SPARKs actually exist.
   //
   // Real check: sparkcan spawns a background thread per SPARK that parses
-  // incoming periodic status frames. Status-0 broadcasts at ~50 Hz, so
-  // after a short settling delay, GetVoltage() returns real bus voltage
-  // (~12V) if the SPARK is alive, or 0 if no frames ever arrived.
-  std::this_thread::sleep_for(std::chrono::milliseconds(150));
+  // incoming periodic status frames. Period 1 carries bus voltage at ~50 Hz.
+  // 500 ms is enough for all per-device threads to start, get scheduled, and
+  // catch several frames even under bus contention.
+  std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
   for (auto & wheel : wheels_) {
     const float voltage = wheel.spark->GetVoltage();
@@ -288,17 +292,20 @@ hardware_interface::return_type SparkCanHardware::read(
 // Called every cycle AFTER the controllers run.
 // Converts wheel rad/s commands to motor RPM and sends to each SPARK.
 
-hardware_interface::return_type SparkCanHardware::write(
-  const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
+  hardware_interface::return_type SparkCanHardware::write(
+    const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
+  // 1. Send a single static heartbeat frame to keep all CAN motor watchdogs happy
+  SparkBase::Heartbeat();
+
+  // 2. Update the control commands for each wheel
   for (auto & wheel : wheels_) {
     if (!wheel.spark) continue;
 
-    // Convert wheel angular velocity (rad/s) to motor shaft RPM:
-    //   motor_rpm = wheel_rad_s × (60 / 2π) × gear_ratio
+    // Convert wheel angular velocity (rad/s) to motor shaft RPM
     float motor_rpm = static_cast<float>(wheel.cmd_vel * rpm_per_rads_);
 
-    // Send to SPARK's onboard velocity PID controller
+    // Send the updated target velocity
     wheel.spark->SetVelocity(motor_rpm);
   }
 
