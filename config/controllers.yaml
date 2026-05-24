@@ -41,14 +41,14 @@ diff_drive_controller:
     # setup), the rover stops within 0.5 s.
     cmd_vel_timeout: 0.5  # seconds
 
-    # --- Odometry ---
+    # Odometry
     publish_rate: 50.0               # Hz for /odom
     odom_frame_id: odom
     base_frame_id: base_link
     pose_covariance_diagonal:   [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
     twist_covariance_diagonal:  [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
 
-    # Publish odom→base_link TF
+    # Publish odom --> base_link TF
     enable_odom_tf: true
 
     # Use open-loop odometry (integrate commands, not encoder feedback).
