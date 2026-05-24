@@ -16,9 +16,11 @@
 
 #include "storm_teleop/spark_can_hardware.hpp"
 
+#include <chrono>
 #include <cmath>
 #include <limits>
 #include <stdexcept>
+#include <thread>
 
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -154,28 +156,35 @@ hardware_interface::CallbackReturn SparkCanHardware::on_configure(
       // Clear any lingering faults from previous sessions
       wheel.spark->ClearStickyFaults();
 
-      // Presence check: ReadFirmwareVersion blocks ~20ms waiting for a
-      // response from this specific device ID. Setter calls above can't
-      // detect a missing device (CAN ACKs are bus-wide, not per-recipient),
-      // so this is the first call that proves the SPARK is actually there.
-      auto fw = wheel.spark->ReadFirmwareVersion();
-      if (fw.has_value()) {
-        auto [major, minor, patch, build, debug] = *fw;
-        RCLCPP_INFO(rclcpp::get_logger("SparkCanHardware"),
-          "  CAN %d (%s): ONLINE — fw %u.%u.%u%s",
-          wheel.can_id, wheel.joint_name.c_str(),
-          major, minor, patch, debug ? " (debug)" : "");
-        ++online_count;
-      } else {
-        RCLCPP_WARN(rclcpp::get_logger("SparkCanHardware"),
-          "  CAN %d (%s): OFFLINE — no firmware response (device not on bus?)",
-          wheel.can_id, wheel.joint_name.c_str());
-      }
-
     } catch (const std::exception & e) {
       RCLCPP_ERROR(rclcpp::get_logger("SparkCanHardware"),
         "  CAN %d (%s): FAILED — %s", wheel.can_id, wheel.joint_name.c_str(), e.what());
       return hardware_interface::CallbackReturn::ERROR;
+    }
+  }
+
+  // ─── Presence check ───
+  // CAN ACKs are bus-wide, not per-recipient, so the setter calls above
+  // succeed as long as ANY device is on the bus — they can't tell us which
+  // specific SPARKs actually exist.
+  //
+  // Real check: sparkcan spawns a background thread per SPARK that parses
+  // incoming periodic status frames. Status-0 broadcasts at ~50 Hz, so
+  // after a short settling delay, GetVoltage() returns real bus voltage
+  // (~12V) if the SPARK is alive, or 0 if no frames ever arrived.
+  std::this_thread::sleep_for(std::chrono::milliseconds(150));
+
+  for (auto & wheel : wheels_) {
+    const float voltage = wheel.spark->GetVoltage();
+    if (voltage > 5.0f) {
+      RCLCPP_INFO(rclcpp::get_logger("SparkCanHardware"),
+        "  CAN %d (%s): ONLINE — bus %.2f V",
+        wheel.can_id, wheel.joint_name.c_str(), voltage);
+      ++online_count;
+    } else {
+      RCLCPP_WARN(rclcpp::get_logger("SparkCanHardware"),
+        "  CAN %d (%s): OFFLINE — no status frames received",
+        wheel.can_id, wheel.joint_name.c_str());
     }
   }
 
