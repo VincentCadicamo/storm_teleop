@@ -1,5 +1,5 @@
-#ifndef URC_TELEOP__SPARK_CAN_HARDWARE_HPP_
-#define URC_TELEOP__SPARK_CAN_HARDWARE_HPP_
+#ifndef STORM_TELEOP__SPARK_CAN_HARDWARE_HPP_
+#define STORM_TELEOP__SPARK_CAN_HARDWARE_HPP_
 
 #include <memory>
 #include <string>
@@ -15,7 +15,7 @@
 // sparkcan — installed via PPA (sudo apt install sparkcan)
 #include <SparkMax.hpp>
 
-namespace urc_teleop
+namespace storm_teleop
 {
 
 /// Per-wheel bookkeeping: sparkcan handle + ROS interface values
@@ -93,6 +93,6 @@ private:
   void stop_all();
 };
 
-}  // namespace urc_teleop
+}  // namespace storm_teleop
 
-#endif  // URC_TELEOP__SPARK_CAN_HARDWARE_HPP_
+#endif  // STORM_TELEOP__SPARK_CAN_HARDWARE_HPP_

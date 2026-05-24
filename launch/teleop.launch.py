@@ -6,7 +6,7 @@ When you set up a base station later, split joy_node + teleop_twist_joy
 into a separate launch on the laptop and let /cmd_vel cross via DDS.
 
 Launch with:
-    ros2 launch urc_teleop teleop.launch.py
+    ros2 launch storm_teleop teleop.launch.py
 """
 
 import os
@@ -14,19 +14,24 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, TimerAction
 from launch.substitutions import LaunchConfiguration, Command
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from ament_index_python.packages import get_package_share_directory
 
 
 def generate_launch_description():
-    pkg_dir = get_package_share_directory('urc_teleop')
+    pkg_dir = get_package_share_directory('storm_teleop')
 
     # --- Paths ---
     xacro_file    = os.path.join(pkg_dir, 'description', 'rover.urdf.xacro')
     controllers   = os.path.join(pkg_dir, 'config', 'controllers.yaml')
     joy_teleop    = os.path.join(pkg_dir, 'config', 'joy_teleop.yaml')
 
-    # Process xacro → URDF string
-    robot_description = Command(['xacro ', xacro_file])
+    # Process xacro → URDF string. ParameterValue(..., value_type=str) prevents
+    # the launch system from re-parsing the XML as YAML.
+    robot_description = ParameterValue(
+        Command(['xacro ', xacro_file]),
+        value_type=str,
+    )
 
     # ======================== NODES ========================
 

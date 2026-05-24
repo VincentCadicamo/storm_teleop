@@ -14,7 +14,7 @@
 // the SPARK) regardless of the ros2_control update rate (50 Hz).
 // =============================================================================
 
-#include "urc_teleop/spark_can_hardware.hpp"
+#include "storm_teleop/spark_can_hardware.hpp"
 
 #include <cmath>
 #include <limits>
@@ -23,7 +23,7 @@
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "rclcpp/rclcpp.hpp"
 
-namespace urc_teleop
+namespace storm_teleop
 {
 
 // ─────────────────────────── helpers ───────────────────────────
@@ -288,8 +288,8 @@ void SparkCanHardware::stop_all()
   }
 }
 
-}  // namespace urc_teleop
+}  // namespace storm_teleop
 
 // ─── Register with pluginlib so controller_manager can discover this ───
 #include "pluginlib/class_list_macros.hpp"
-PLUGINLIB_EXPORT_CLASS(urc_teleop::SparkCanHardware, hardware_interface::SystemInterface)
+PLUGINLIB_EXPORT_CLASS(storm_teleop::SparkCanHardware, hardware_interface::SystemInterface)

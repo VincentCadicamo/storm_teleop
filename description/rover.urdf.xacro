@@ -133,7 +133,7 @@
   -->
   <ros2_control name="SparkCanSystem" type="system">
     <hardware>
-      <plugin>urc_teleop/SparkCanHardware</plugin>
+      <plugin>storm_teleop/SparkCanHardware</plugin>
       <param name="can_interface">can0</param>
       <param name="gear_ratio">81.0</param>
       <!-- SPARK MAX onboard velocity PID starting values.
