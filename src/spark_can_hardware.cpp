@@ -140,18 +140,18 @@ hardware_interface::CallbackReturn SparkCanHardware::on_configure(
       // We do conversion in this code rather than on the SPARK, so leave
       // the SPARK's native units (RPM / rotations). This makes raw CAN
       // debugging easier — you see real motor RPM on the wire.
-      // spark->SetVelocityConversionFactor(1.0);  // default
-      // spark->SetPositionConversionFactor(1.0);  // default
+      spark->SetVelocityConversionFactor(1.0);  // default
+      spark->SetPositionConversionFactor(1.0);  // default
 
       // --- Onboard velocity PID ---
       // Slot 0 is the default control slot.
       // kF (feedforward) does most of the work: output ≈ kF × setpoint_rpm.
       // kP adds a small correction for steady-state error.
       // Tune these on the real robot!
-      wheel.spark->SetP(0.00005, pid_kp_);
+      wheel.spark->SetP(0, pid_kp_);
       wheel.spark->SetI(0, pid_ki_);
       wheel.spark->SetD(0, pid_kd_);
-      wheel.spark->SetF(0.000176, pid_kf_);
+      wheel.spark->SetF(0, pid_kf_);
 
       // Persist config to flash so it survives power cycles.
       // Comment this out during active PID tuning (flash has limited writes).

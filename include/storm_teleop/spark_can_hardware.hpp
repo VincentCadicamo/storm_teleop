@@ -84,7 +84,7 @@ private:
   double rad_per_rot_{0.0};   // 2π / gear_ratio
 
   // SPARK PID starting values
-  float pid_kp_{0.0001f};
+  float pid_kp_{0.00005f};
   float pid_ki_{0.0f};
   float pid_kd_{0.0f};
   float pid_kf_{0.000176f};
