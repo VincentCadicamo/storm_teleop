@@ -1,7 +1,6 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="urc_rover">
 
-  <!-- ==================== PROPERTIES ==================== -->
   <!-- All units: meters, kg, radians -->
 
   <!-- Chassis: simple box -->
@@ -12,9 +11,9 @@
 
   <!-- Wheels -->
   <xacro:property name="wheel_radius"     value="0.09525"/>   <!-- 3.75 in -->
-  <xacro:property name="wheel_width"      value="0.05"/>      <!-- 2 in, cosmetic -->
+  <xacro:property name="wheel_width"      value="0.05"/>
   <xacro:property name="wheel_mass"       value="0.5"/>
-  <xacro:property name="wheel_separation" value="0.8636"/>    <!-- 34 in center-to-center -->
+  <xacro:property name="wheel_separation" value="0.8636"/>    <!-- 34 in center to center -->
 
   <!-- Wheel Y offset from base_link center (half track width) -->
   <xacro:property name="wheel_y_offset" value="${wheel_separation / 2.0}"/>
@@ -27,7 +26,8 @@
   <!-- Chassis sits so wheel axles are at ground level (z=0 at ground) -->
   <xacro:property name="chassis_z_offset" value="${wheel_radius + chassis_height / 2.0}"/>
 
-  <!-- ==================== INERTIA MACROS ==================== -->
+
+  <!-- INERTIA MACROS -->
 
   <xacro:macro name="box_inertia" params="m x y z">
     <inertial>
@@ -47,7 +47,8 @@
     </inertial>
   </xacro:macro>
 
-  <!-- ==================== WHEEL MACRO ==================== -->
+
+  <!-- WHEEL MACRO -->
 
   <xacro:macro name="wheel" params="name x_pos y_pos">
     <link name="${name}_link">
@@ -77,7 +78,7 @@
     </joint>
   </xacro:macro>
 
-  <!-- ==================== LINKS & JOINTS ==================== -->
+  <!--  LINKS & JOINTS  -->
 
   <!-- base_link: at wheel-axle height, center of chassis footprint -->
   <link name="base_link">
@@ -123,7 +124,8 @@
   <xacro:wheel name="middle_left_wheel"  x_pos="${wheel_x_middle}" y_pos="${wheel_y_offset}"/>
   <xacro:wheel name="back_left_wheel"    x_pos="${wheel_x_back}"   y_pos="${wheel_y_offset}"/>
 
-  <!-- ==================== ROS2_CONTROL ==================== -->
+  <!-- ROS2_CONTROL -->
+
   <!--
     This block tells controller_manager to load SparkCanHardware and wire
     each joint's velocity command / position+velocity state interfaces.
@@ -131,6 +133,7 @@
     Hardware-level params are read by on_init() in spark_can_hardware.cpp.
     Per-joint params (can_id, inverted) are read from info_.joints[i].parameters.
   -->
+
   <ros2_control name="SparkCanSystem" type="system">
     <hardware>
       <plugin>storm_teleop/SparkCanHardware</plugin>
