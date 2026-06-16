@@ -28,13 +28,13 @@
 namespace storm_teleop
 {
 
-// ─────────────────────────── helpers ───────────────────────────
+// Helper
 
 static constexpr double kTwoPi = 2.0 * M_PI;
 
-// ─────────────────────────── on_init ───────────────────────────
-// Called once when controller_manager first loads the plugin.
-// Parses all parameters from the URDF <ros2_control> block.
+// on_init
+// This is called once when the controller_manager first loads the plugin, it 
+// parses all parameters from the URDF <ros2_control> block
 
 hardware_interface::CallbackReturn SparkCanHardware::on_init(
   const hardware_interface::HardwareInfo & info)
@@ -46,7 +46,7 @@ hardware_interface::CallbackReturn SparkCanHardware::on_init(
     return hardware_interface::CallbackReturn::ERROR;
   }
 
-  // --- Hardware-level params (from <hardware><param> tags) ---
+  // These are Hardware-level params (from <hardware><param> tags)
   can_interface_ = info_.hardware_parameters.at("can_interface");
   gear_ratio_    = std::stod(info_.hardware_parameters.at("gear_ratio"));
   pid_kp_ = std::stof(info_.hardware_parameters.at("pid_kp"));
@@ -54,10 +54,10 @@ hardware_interface::CallbackReturn SparkCanHardware::on_init(
   pid_kd_ = std::stof(info_.hardware_parameters.at("pid_kd"));
   pid_kf_ = std::stof(info_.hardware_parameters.at("pid_kf"));
 
-  // Pre-compute conversion constants
-  //   motor_rpm → wheel_rad_s :  rpm × (2π/60) / gear_ratio
-  //   wheel_rad_s → motor_rpm :  rad_s × (60/2π) × gear_ratio
-  //   motor_rotations → wheel_rad :  rotations × 2π / gear_ratio
+  // These are the conversion constants for our drive train
+  // motor_rpm = wheel_rad_s =        rpm x (2pi/60) / gear_ratio
+  // wheel_rad_s = motor_rpm =        rad_s x (60/2pi) x gear_ratio
+  // motor_rotations = wheel_rad =    rotations x 2pi / gear_ratio
   rads_per_rpm_ = (kTwoPi / 60.0) / gear_ratio_;
   rpm_per_rads_ = (60.0 / kTwoPi) * gear_ratio_;
   rad_per_rot_  = kTwoPi / gear_ratio_;
@@ -66,7 +66,7 @@ hardware_interface::CallbackReturn SparkCanHardware::on_init(
     "Gear ratio: %.1f | rads_per_rpm: %.6f | rpm_per_rads: %.2f",
     gear_ratio_, rads_per_rpm_, rpm_per_rads_);
 
-  // --- Per-joint params (from <joint><param> tags) ---
+  // These are the Per-joint params (from <joint><param> tags)
   wheels_.resize(info_.joints.size());
   for (size_t i = 0; i < info_.joints.size(); ++i) {
     auto & joint = info_.joints[i];
@@ -76,8 +76,7 @@ hardware_interface::CallbackReturn SparkCanHardware::on_init(
     wheel.can_id     = static_cast<uint8_t>(std::stoi(joint.parameters.at("can_id")));
     wheel.inverted   = (joint.parameters.at("inverted") == "true");
 
-    // Validate: each joint must have exactly 1 command interface (velocity)
-    //           and 2 state interfaces (position, velocity)
+    // Make sure each each joint has exactly 1 command interface (velocity) and 2 state interfaces (position, velocity)
     if (joint.command_interfaces.size() != 1 ||
         joint.command_interfaces[0].name != hardware_interface::HW_IF_VELOCITY)
     {
@@ -100,9 +99,9 @@ hardware_interface::CallbackReturn SparkCanHardware::on_init(
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-// ─────────────────────── on_configure ──────────────────────────
-// Called on transition to "configured" state.
-// Creates SparkMax objects and sends one-time configuration.
+// on_configure
+// This is called on transition to "configured" state. It creates SparkMax 
+// objects and sends one-time configuration.
 
 hardware_interface::CallbackReturn SparkCanHardware::on_configure(
   const rclcpp_lifecycle::State & /*previous_state*/)
@@ -113,7 +112,8 @@ hardware_interface::CallbackReturn SparkCanHardware::on_configure(
 
   size_t online_count = 0;
 
-  // Diagnostic mode: skip all setter calls. Construct SparkMax objects only,
+  
+  //Diagnostic mode: skip all setter calls. Construct SparkMax objects only,
   // so the background read thread starts and write() can call SetVelocity.
   // The SPARKs use whatever was burned to flash via REV Hardware Client
   // (motor type, brake mode, control type, inversion, PID gains).
@@ -123,7 +123,7 @@ hardware_interface::CallbackReturn SparkCanHardware::on_configure(
     try {
       wheel.spark = std::make_unique<SparkMax>(can_interface_, wheel.can_id);
 
-      // --- One-time motor configuration ---
+      //One-time motor configuration
       // NEO V1.1 is brushless
       wheel.spark->SetMotorType(MotorType::kBrushless);
 
@@ -139,11 +139,11 @@ hardware_interface::CallbackReturn SparkCanHardware::on_configure(
 
       // We do conversion in this code rather than on the SPARK, so leave
       // the SPARK's native units (RPM / rotations). This makes raw CAN
-      // debugging easier — you see real motor RPM on the wire.
+      // debugging easier, you see real motor RPM on the wire.
       spark->SetVelocityConversionFactor(1.0);  // default
       spark->SetPositionConversionFactor(1.0);  // default
 
-      // --- Onboard velocity PID ---
+      //Onboard velocity PID
       // Slot 0 is the default control slot.
       // kF (feedforward) does most of the work: output ≈ kF × setpoint_rpm.
       // kP adds a small correction for steady-state error.
@@ -167,9 +167,9 @@ hardware_interface::CallbackReturn SparkCanHardware::on_configure(
     }
   }
 
-  // ─── Presence check ───
+  //Presence check
   // CAN ACKs are bus-wide, not per-recipient, so the setter calls above
-  // succeed as long as ANY device is on the bus — they can't tell us which
+  // succeed as long as ANY device is on the bus, they can't tell us which
   // specific SPARKs actually exist.
   //
   // Real check: sparkcan spawns a background thread per SPARK that parses
@@ -199,7 +199,7 @@ hardware_interface::CallbackReturn SparkCanHardware::on_configure(
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-// ──────────────────── export interfaces ────────────────────────
+//export interfaces
 // These register the double* pointers that ros2_control reads/writes
 // each cycle. diff_drive_controller writes to cmd_vel and reads
 // state_pos / state_vel.
@@ -228,7 +228,7 @@ SparkCanHardware::export_command_interfaces()
   return interfaces;
 }
 
-// ───────────────── on_activate / on_deactivate ─────────────────
+//on_activate / on_deactivate
 
 hardware_interface::CallbackReturn SparkCanHardware::on_activate(
   const rclcpp_lifecycle::State & /*previous_state*/)
@@ -250,8 +250,7 @@ hardware_interface::CallbackReturn SparkCanHardware::on_deactivate(
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-// ─────────────────────── on_cleanup ───────────────────────────
-
+//on_cleanup
 hardware_interface::CallbackReturn SparkCanHardware::on_cleanup(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
@@ -263,7 +262,7 @@ hardware_interface::CallbackReturn SparkCanHardware::on_cleanup(
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-// ───────────────────────── read() ─────────────────────────────
+//read()
 // Called every cycle BEFORE the controllers run.
 // Pulls encoder data from each SPARK and converts to wheel-frame SI units.
 
@@ -279,8 +278,8 @@ hardware_interface::return_type SparkCanHardware::read(
     float motor_rotations = wheel.spark->GetPosition();
 
     // Convert to wheel-frame SI units for ros2_control:
-    //   wheel rad/s = motor_rpm × (2π/60) / gear_ratio
-    //   wheel rad   = motor_rotations × 2π / gear_ratio
+    //   wheel rad/s = motor_rpm x (2pi/60) / gear_ratio
+    //   wheel rad   = motor_rotations x 2pi / gear_ratio
     wheel.state_vel = static_cast<double>(motor_rpm) * rads_per_rpm_;
     wheel.state_pos = static_cast<double>(motor_rotations) * rad_per_rot_;
   }
@@ -288,17 +287,17 @@ hardware_interface::return_type SparkCanHardware::read(
   return hardware_interface::return_type::OK;
 }
 
-// ───────────────────────── write() ────────────────────────────
+//write()
 // Called every cycle AFTER the controllers run.
 // Converts wheel rad/s commands to motor RPM and sends to each SPARK.
 
   hardware_interface::return_type SparkCanHardware::write(
     const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
-  // 1. Send a single static heartbeat frame to keep all CAN motor watchdogs happy
+  //Send a single static heartbeat frame to keep all CAN motor watchdogs happy
   SparkBase::Heartbeat();
 
-  // 2. Update the control commands for each wheel
+  //Update the control commands for each wheel
   for (auto & wheel : wheels_) {
     if (!wheel.spark) continue;
 
@@ -312,7 +311,7 @@ hardware_interface::return_type SparkCanHardware::read(
   return hardware_interface::return_type::OK;
 }
 
-// ───────────────────────── stop_all ───────────────────────────
+//stop_all
 
 void SparkCanHardware::stop_all()
 {
@@ -327,6 +326,6 @@ void SparkCanHardware::stop_all()
 
 }  // namespace storm_teleop
 
-// ─── Register with pluginlib so controller_manager can discover this ───
+//Register with pluginlib so controller_manager can discover this
 #include "pluginlib/class_list_macros.hpp"
 PLUGINLIB_EXPORT_CLASS(storm_teleop::SparkCanHardware, hardware_interface::SystemInterface)
