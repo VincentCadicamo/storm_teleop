@@ -11,11 +11,26 @@ Launch with:
 
 import os
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, TimerAction
+from launch.actions import DeclareLaunchArgument, LogInfo, TimerAction
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, Command
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from ament_index_python.packages import get_package_share_directory
+
+
+def _can_iface_down(iface='can0'):
+    """Read-only pre-flight check: True if the CAN interface is not up.
+
+    Reads /sys/class/net/<iface>/operstate — never attempts privileged
+    bring-up (that's can0_up.sh / storm-can0.service). Missing interface or
+    'down' operstate counts as down.
+    """
+    try:
+        with open(f'/sys/class/net/{iface}/operstate') as f:
+            return f.read().strip() == 'down'
+    except OSError:
+        return True  # interface not present
 
 
 def generate_launch_description():
@@ -25,13 +40,32 @@ def generate_launch_description():
     xacro_file    = os.path.join(pkg_dir, 'description', 'rover.urdf.xacro')
     controllers   = os.path.join(pkg_dir, 'config', 'controllers.yaml')
     joy_teleop    = os.path.join(pkg_dir, 'config', 'joy_teleop.yaml')
+    sparks_config = os.path.join(pkg_dir, 'config', 'sparks.yaml')
 
     # Process xacro → URDF string. ParameterValue(..., value_type=str) prevents
-    # the launch system from re-parsing the XML as YAML.
+    # the launch system from re-parsing the XML as YAML. The spark_config arg
+    # hands the SPARK config YAML's absolute path to the hardware plugin.
     robot_description = ParameterValue(
-        Command(['xacro ', xacro_file]),
+        Command(['xacro ', xacro_file, ' spark_config:=', sparks_config]),
         value_type=str,
     )
+
+    # --- Args ---
+    enable_can_health = DeclareLaunchArgument(
+        'enable_can_health', default_value='true',
+        description='Run the CAN health diagnostics node (/diagnostics).',
+    )
+
+    # --- Read-only can0 pre-flight check ---
+    # Warns loudly if can0 is down so the failure is obvious in the log; the
+    # real stop is the plugin's require_all_sparks gate. Bring-up itself is
+    # can0_up.sh / storm-can0.service (needs privilege), not this launch file.
+    can_precheck = []
+    if _can_iface_down('can0'):
+        can_precheck.append(LogInfo(msg=(
+            '[storm_teleop] WARNING: can0 is DOWN. Run '
+            '`sudo scripts/can0_up.sh` or enable storm-can0.service before '
+            'expecting the drivetrain to come up.')))
 
     # ======================== NODES ========================
 
@@ -102,11 +136,23 @@ def generate_launch_description():
         output='screen',
     )
 
+    # 7) can_health_node: passive CAN bus diagnostics on /diagnostics
+    can_health_node = Node(
+        package='storm_teleop',
+        executable='can_health_node',
+        parameters=[{'interface': 'can0'}],
+        condition=IfCondition(LaunchConfiguration('enable_can_health')),
+        output='screen',
+    )
+
     return LaunchDescription([
+        enable_can_health,
+        *can_precheck,
         robot_state_pub,
         control_node,
         diff_drive_spawner,
         jsb_spawner,
         joy_node,
         teleop_twist_joy,
+        can_health_node,
     ])

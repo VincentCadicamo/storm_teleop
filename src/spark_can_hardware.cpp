@@ -25,6 +25,8 @@
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "rclcpp/rclcpp.hpp"
 
+#include <yaml-cpp/yaml.h>
+
 namespace storm_teleop
 {
 
@@ -46,13 +48,35 @@ hardware_interface::CallbackReturn SparkCanHardware::on_init(
     return hardware_interface::CallbackReturn::ERROR;
   }
 
-  // These are Hardware-level params (from <hardware><param> tags)
+  // Required hardware-level params (from <hardware><param> tags).
   can_interface_ = info_.hardware_parameters.at("can_interface");
   gear_ratio_    = std::stod(info_.hardware_parameters.at("gear_ratio"));
-  pid_kp_ = std::stof(info_.hardware_parameters.at("pid_kp"));
-  pid_ki_ = std::stof(info_.hardware_parameters.at("pid_ki"));
-  pid_kd_ = std::stof(info_.hardware_parameters.at("pid_kd"));
-  pid_kf_ = std::stof(info_.hardware_parameters.at("pid_kf"));
+
+  // PID gains live in a dedicated SPARK config file (config/sparks.yaml). The
+  // launch file resolves its absolute path and passes it in as the optional
+  // `spark_config` hardware param. Precedence per gain:
+  //   sparks.yaml value -> header default (members already hold the default).
+  // A missing param, missing file, or missing key is non-fatal — we warn and
+  // keep the header default so the robot still comes up.
+  auto cfg_it = info_.hardware_parameters.find("spark_config");
+  if (cfg_it == info_.hardware_parameters.end() || cfg_it->second.empty()) {
+    RCLCPP_WARN(rclcpp::get_logger("SparkCanHardware"),
+      "No 'spark_config' param set — using built-in default PID gains.");
+  } else {
+    load_pid_from_yaml(cfg_it->second);
+  }
+
+  // Optional: persist config to flash this launch (default false). See header.
+  auto burn_it = info_.hardware_parameters.find("burn_flash");
+  burn_flash_ = (burn_it != info_.hardware_parameters.end() &&
+                 burn_it->second == "true");
+
+  // Optional pre-flight gate (default true): when set, on_configure fails if
+  // any SPARK is missing from the bus, so the rover won't activate with a dead
+  // wheel. Set false to allow limping up with fewer than all six.
+  auto gate_it = info_.hardware_parameters.find("require_all_sparks");
+  require_all_sparks_ = (gate_it == info_.hardware_parameters.end() ||
+                         gate_it->second == "true");
 
   // These are the conversion constants for our drive train
   // motor_rpm = wheel_rad_s =        rpm x (2pi/60) / gear_ratio
@@ -65,6 +89,10 @@ hardware_interface::CallbackReturn SparkCanHardware::on_init(
   RCLCPP_INFO(rclcpp::get_logger("SparkCanHardware"),
     "Gear ratio: %.1f | rads_per_rpm: %.6f | rpm_per_rads: %.2f",
     gear_ratio_, rads_per_rpm_, rpm_per_rads_);
+
+  RCLCPP_INFO(rclcpp::get_logger("SparkCanHardware"),
+    "Effective PID gains: kP=%.6f kI=%.6f kD=%.6f kF=%.6f",
+    pid_kp_, pid_ki_, pid_kd_, pid_kf_);
 
   // These are the Per-joint params (from <joint><param> tags)
   wheels_.resize(info_.joints.size());
@@ -99,6 +127,42 @@ hardware_interface::CallbackReturn SparkCanHardware::on_init(
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
+// load_pid_from_yaml
+// Reads gains from config/sparks.yaml (path passed in via the spark_config
+// hardware param). Any missing key or read error leaves that gain at its
+// header default — this must never abort startup.
+
+void SparkCanHardware::load_pid_from_yaml(const std::string & path)
+{
+  YAML::Node root;
+  try {
+    root = YAML::LoadFile(path);
+  } catch (const std::exception & e) {
+    RCLCPP_WARN(rclcpp::get_logger("SparkCanHardware"),
+      "Could not read spark_config '%s' (%s) — using default PID gains.",
+      path.c_str(), e.what());
+    return;
+  }
+
+  const YAML::Node pid = root["spark_config"] ? root["spark_config"]["pid"]
+                                              : YAML::Node();
+  if (!pid) {
+    RCLCPP_WARN(rclcpp::get_logger("SparkCanHardware"),
+      "spark_config '%s' has no spark_config.pid section — using default gains.",
+      path.c_str());
+    return;
+  }
+
+  // Override only the keys that are present; leave the rest at header defaults.
+  if (pid["kp"]) pid_kp_ = pid["kp"].as<float>();
+  if (pid["ki"]) pid_ki_ = pid["ki"].as<float>();
+  if (pid["kd"]) pid_kd_ = pid["kd"].as<float>();
+  if (pid["kf"]) pid_kf_ = pid["kf"].as<float>();
+
+  RCLCPP_INFO(rclcpp::get_logger("SparkCanHardware"),
+    "Loaded PID gains from %s", path.c_str());
+}
+
 // on_configure
 // This is called on transition to "configured" state. It creates SparkMax 
 // objects and sends one-time configuration.
@@ -112,13 +176,10 @@ hardware_interface::CallbackReturn SparkCanHardware::on_configure(
 
   size_t online_count = 0;
 
-  
-  //Diagnostic mode: skip all setter calls. Construct SparkMax objects only,
-  // so the background read thread starts and write() can call SetVelocity.
-  // The SPARKs use whatever was burned to flash via REV Hardware Client
-  // (motor type, brake mode, control type, inversion, PID gains).
-  // Once we know SetVelocity alone works, we can re-enable setters one at a
-  // time to find which one breaks PID output.
+  // For each wheel: construct the SparkMax handle (which starts sparkcan's
+  // background read thread), then push our full one-time configuration —
+  // motor type, brake mode, velocity control, inversion, conversion factors,
+  // and onboard PID gains — and persist it to flash.
   for (auto & wheel : wheels_) {
     try {
       wheel.spark = std::make_unique<SparkMax>(can_interface_, wheel.can_id);
@@ -140,8 +201,8 @@ hardware_interface::CallbackReturn SparkCanHardware::on_configure(
       // We do conversion in this code rather than on the SPARK, so leave
       // the SPARK's native units (RPM / rotations). This makes raw CAN
       // debugging easier, you see real motor RPM on the wire.
-      spark->SetVelocityConversionFactor(1.0);  // default
-      spark->SetPositionConversionFactor(1.0);  // default
+      wheel.spark->SetVelocityConversionFactor(1.0);  // default
+      wheel.spark->SetPositionConversionFactor(1.0);  // default
 
       //Onboard velocity PID
       // Slot 0 is the default control slot.
@@ -153,9 +214,12 @@ hardware_interface::CallbackReturn SparkCanHardware::on_configure(
       wheel.spark->SetD(0, pid_kd_);
       wheel.spark->SetF(0, pid_kf_);
 
-      // Persist config to flash so it survives power cycles.
-      // Comment this out during active PID tuning (flash has limited writes).
-      wheel.spark->BurnFlash();
+      // Persist config to flash only when explicitly requested (burn_flash
+      // param). Normally skipped: on_configure re-applies the full config over
+      // CAN each launch, and flash has limited write cycles.
+      if (burn_flash_) {
+        wheel.spark->BurnFlash();
+      }
 
       // Clear any lingering faults from previous sessions
       wheel.spark->ClearStickyFaults();
@@ -195,6 +259,18 @@ hardware_interface::CallbackReturn SparkCanHardware::on_configure(
   RCLCPP_INFO(rclcpp::get_logger("SparkCanHardware"),
     "Configure complete: %zu/%zu SPARK MAXs responding.",
     online_count, wheels_.size());
+
+  // Pre-flight gate: refuse to configure (so the controller never activates)
+  // if any SPARK is missing and require_all_sparks is set. Prevents driving
+  // with a dead wheel — the operator sees the failure and fixes the bus first.
+  if (require_all_sparks_ && online_count < wheels_.size()) {
+    RCLCPP_ERROR(rclcpp::get_logger("SparkCanHardware"),
+      "Only %zu/%zu SPARK MAXs online and require_all_sparks is true — "
+      "refusing to configure. Check CAN wiring/power, or set "
+      "require_all_sparks:=false to allow limping up.",
+      online_count, wheels_.size());
+    return hardware_interface::CallbackReturn::ERROR;
+  }
 
   return hardware_interface::CallbackReturn::SUCCESS;
 }
@@ -269,19 +345,33 @@ hardware_interface::CallbackReturn SparkCanHardware::on_cleanup(
 hardware_interface::return_type SparkCanHardware::read(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
-  for (auto & wheel : wheels_) {
-    if (!wheel.spark) continue;
+  // sparkcan's getters currently just return the last CAN frame's value under
+  // a lock and don't throw, but wrap the loop so any future/underlying throw
+  // can't unwind through controller_manager's update loop and abort the node.
+  //
+  // NOTE: these getters return the last received value with no staleness check
+  // — a SPARK that drops off the bus mid-drive leaves state frozen, not zeroed.
+  // Detecting that requires a staleness signal sparkcan does not expose.
+  try {
+    for (auto & wheel : wheels_) {
+      if (!wheel.spark) continue;
 
-    // GetVelocity() returns motor shaft RPM (native SPARK unit).
-    // GetPosition() returns motor shaft rotations (native SPARK unit).
-    float motor_rpm       = wheel.spark->GetVelocity();
-    float motor_rotations = wheel.spark->GetPosition();
+      // GetVelocity() returns motor shaft RPM (native SPARK unit).
+      // GetPosition() returns motor shaft rotations (native SPARK unit).
+      float motor_rpm       = wheel.spark->GetVelocity();
+      float motor_rotations = wheel.spark->GetPosition();
 
-    // Convert to wheel-frame SI units for ros2_control:
-    //   wheel rad/s = motor_rpm x (2pi/60) / gear_ratio
-    //   wheel rad   = motor_rotations x 2pi / gear_ratio
-    wheel.state_vel = static_cast<double>(motor_rpm) * rads_per_rpm_;
-    wheel.state_pos = static_cast<double>(motor_rotations) * rad_per_rot_;
+      // Convert to wheel-frame SI units for ros2_control:
+      //   wheel rad/s = motor_rpm x (2pi/60) / gear_ratio
+      //   wheel rad   = motor_rotations x 2pi / gear_ratio
+      wheel.state_vel = static_cast<double>(motor_rpm) * rads_per_rpm_;
+      wheel.state_pos = static_cast<double>(motor_rotations) * rad_per_rot_;
+    }
+  } catch (const std::exception & e) {
+    static rclcpp::Clock clock(RCL_STEADY_TIME);
+    RCLCPP_ERROR_THROTTLE(rclcpp::get_logger("SparkCanHardware"),
+      clock, 1000, "read() failed: %s", e.what());
+    return hardware_interface::return_type::ERROR;
   }
 
   return hardware_interface::return_type::OK;
@@ -294,18 +384,37 @@ hardware_interface::return_type SparkCanHardware::read(
   hardware_interface::return_type SparkCanHardware::write(
     const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
-  //Send a single static heartbeat frame to keep all CAN motor watchdogs happy
-  SparkBase::Heartbeat();
+  static rclcpp::Clock clock(RCL_STEADY_TIME);
 
-  //Update the control commands for each wheel
-  for (auto & wheel : wheels_) {
-    if (!wheel.spark) continue;
+  try {
+    //Send a single static heartbeat frame to keep all CAN motor watchdogs happy
+    SparkBase::Heartbeat();
 
-    // Convert wheel angular velocity (rad/s) to motor shaft RPM
-    float motor_rpm = static_cast<float>(wheel.cmd_vel * rpm_per_rads_);
+    //Update the control commands for each wheel
+    for (auto & wheel : wheels_) {
+      if (!wheel.spark) continue;
 
-    // Send the updated target velocity
-    wheel.spark->SetVelocity(motor_rpm);
+      // Guard against a NaN/inf command (e.g. a misbehaving controller):
+      // never forward a non-finite setpoint to the motor — hard-stop that
+      // wheel instead so bad math can't run a motor open-loop.
+      if (!std::isfinite(wheel.cmd_vel)) {
+        RCLCPP_ERROR_THROTTLE(rclcpp::get_logger("SparkCanHardware"),
+          clock, 1000, "Non-finite command for CAN %d (%s) — stopping wheel.",
+          wheel.can_id, wheel.joint_name.c_str());
+        wheel.spark->SetDutyCycle(0.0f);
+        continue;
+      }
+
+      // Convert wheel angular velocity (rad/s) to motor shaft RPM
+      float motor_rpm = static_cast<float>(wheel.cmd_vel * rpm_per_rads_);
+
+      // Send the updated target velocity
+      wheel.spark->SetVelocity(motor_rpm);
+    }
+  } catch (const std::exception & e) {
+    RCLCPP_ERROR_THROTTLE(rclcpp::get_logger("SparkCanHardware"),
+      clock, 1000, "write() failed: %s", e.what());
+    return hardware_interface::return_type::ERROR;
   }
 
   return hardware_interface::return_type::OK;

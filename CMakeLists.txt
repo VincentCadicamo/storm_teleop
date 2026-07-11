@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.8)
 project(storm_teleop)
 
+if(NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 17)  # std::optional / std::regex in can_health_node
+  set(CMAKE_CXX_STANDARD_REQUIRED ON)
+endif()
+
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
@@ -11,6 +16,9 @@ find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(hardware_interface REQUIRED)
 find_package(pluginlib REQUIRED)
+find_package(yaml-cpp REQUIRED)  # parse config/sparks.yaml in the plugin
+find_package(diagnostic_updater REQUIRED)  # can_health_node
+find_package(diagnostic_msgs REQUIRED)
 
 # sparkcan: system library installed via PPA (sudo apt install sparkcan).
 # It installs headers to /usr/local/include and libsparkcan.so to /usr/local/lib.
@@ -33,7 +41,7 @@ target_include_directories(spark_can_hardware PUBLIC
   $<INSTALL_INTERFACE:include>
   ${SPARKCAN_INCLUDE_DIR}
 )
-target_link_libraries(spark_can_hardware ${SPARKCAN_LIB})
+target_link_libraries(spark_can_hardware ${SPARKCAN_LIB} yaml-cpp)
 ament_target_dependencies(spark_can_hardware
   rclcpp
   rclcpp_lifecycle
@@ -44,6 +52,16 @@ ament_target_dependencies(spark_can_hardware
 # Pluginlib needs this to find the .xml at runtime
 pluginlib_export_plugin_description_file(hardware_interface spark_can_hardware.xml)
 
+# ---------- CAN health diagnostics node ----------
+# Read-only monitor (sysfs + netlink); never opens a CAN socket, so it does not
+# contend with the hardware plugin for the bus.
+add_executable(can_health_node src/can_health_node.cpp)
+ament_target_dependencies(can_health_node
+  rclcpp
+  diagnostic_updater
+  diagnostic_msgs
+)
+
 # ---------- install ----------
 
 # Plugin library
@@ -51,6 +69,19 @@ install(TARGETS spark_can_hardware
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
+)
+
+# CAN health node executable (ros2 run storm_teleop can_health_node)
+install(TARGETS can_health_node
+  RUNTIME DESTINATION lib/${PROJECT_NAME}
+)
+
+# Bring-up script + systemd unit (installed to share for reference/copying)
+install(PROGRAMS scripts/can0_up.sh
+  DESTINATION lib/${PROJECT_NAME}
+)
+install(DIRECTORY scripts systemd
+  DESTINATION share/${PROJECT_NAME}
 )
 
 # Header files

@@ -74,6 +74,18 @@ private:
   std::string can_interface_;
   double gear_ratio_{81.0};
 
+  // When true, persist the applied config to each SPARK's flash in
+  // on_configure. Leave false for normal use — on_configure re-applies the
+  // full config over CAN every launch, so flashing each boot only wears the
+  // limited flash write cycles. Set true for a single launch when you want to
+  // commit a new persistent baseline to the devices.
+  bool burn_flash_{false};
+
+  // Pre-flight gate: when true, on_configure fails (controller won't activate)
+  // if any SPARK is missing from the bus. Default true; set the
+  // require_all_sparks URDF param to false to allow coming up with fewer.
+  bool require_all_sparks_{true};
+
   // Conversion constants (computed once in on_init)
   //   wheel_rad_s = motor_rpm * rads_per_rpm
   //   motor_rpm   = wheel_rad_s * rpm_per_rads
@@ -83,11 +95,20 @@ private:
   //   wheel_rad = motor_rotations * rad_per_rot
   double rad_per_rot_{0.0};   // 2π / gear_ratio
 
-  // SPARK PID starting values
-  float pid_kp_{0.00005f};
+  // SPARK PID starting values — fallbacks used only when config/sparks.yaml is
+  // missing/unreadable or omits the matching key (see load_pid_from_yaml).
+  // Keep these in step with sparks.yaml so a missing file doesn't silently
+  // change behavior.
+  //   kF = 1 / free_speed_RPM ≈ 1/5676 for NEO V1.1
+  float pid_kp_{0.0001f};
   float pid_ki_{0.0f};
   float pid_kd_{0.0f};
   float pid_kf_{0.000176f};
+
+  /// Load PID gains from the SPARK config YAML at `path`. Any key that is
+  /// absent (or an unreadable/malformed file) leaves the corresponding member
+  /// at its header default. Called from on_init.
+  void load_pid_from_yaml(const std::string & path);
 
   /// Stop all motors immediately (duty cycle 0)
   void stop_all();
