@@ -31,25 +31,31 @@ teleop_twist_joy_node:
   ros__parameters:
     # --- Stick axes ---
     axis_linear:
-      x: 1                    # left stick Y  (push forward = positive)
+      x: 1                    # left stick Y
     axis_angular:
-      yaw: 0                  # left stick X  (push left = positive turn)
+      yaw: 0                  # left stick X
 
     # --- Speed scales ---
     # Normal mode (A held): gentle driving for precision tasks.
     # Turbo mode  (A + RB held): near-max speed.
     #
+    # NOTE: scales are NEGATIVE to invert both sticks. On this controller the
+    # raw joy axes read the opposite sign (push forward -> rover reversed, push
+    # left -> rover turned right). teleop_twist_joy has no invert flag, so we
+    # flip the sign via the scale. Flip an axis's sign here if a stick feels
+    # backwards; the magnitudes are the real speed limits.
+    #
     # Physics limits with 81:1 + NEO V1.1:
     #   theoretical max linear  ≈ 0.70 m/s
     #   theoretical max angular ≈ 1.62 rad/s
     scale_linear:
-      x: 0.3                  # m/s — normal forward speed
+      x: -0.3                 # m/s — normal forward speed (negated: push forward = forward)
     scale_linear_turbo:
-      x: 0.6                  # m/s — turbo (≈86% of theoretical max)
+      x: -0.6                 # m/s — turbo (≈86% of theoretical max)
     scale_angular:
-      yaw: 0.7                # rad/s — normal turn rate
+      yaw: -0.7               # rad/s — normal turn rate (negated: push left = turn left)
     scale_angular_turbo:
-      yaw: 1.4                # rad/s — turbo turn rate
+      yaw: -1.4               # rad/s — turbo turn rate
 
     # --- Deadman / enable ---
     # MUST hold A to move. Release = instant zero-velocity publish.
