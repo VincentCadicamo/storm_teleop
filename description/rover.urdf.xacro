@@ -158,21 +158,21 @@
 
     <!-- RIGHT SIDE (looking from behind the rover) -->
     <joint name="back_right_wheel_joint">
-      <param name="can_id">1</param>
+      <param name="can_id">6</param>
       <param name="inverted">false</param>
       <command_interface name="velocity"/>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
     </joint>
     <joint name="middle_right_wheel_joint">
-      <param name="can_id">2</param>
+      <param name="can_id">5</param>
       <param name="inverted">false</param>
       <command_interface name="velocity"/>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
     </joint>
     <joint name="front_right_wheel_joint">
-      <param name="can_id">3</param>
+      <param name="can_id">4</param>
       <param name="inverted">false</param>
       <command_interface name="velocity"/>
       <state_interface name="position"/>
@@ -181,21 +181,21 @@
 
     <!-- LEFT SIDE -->
     <joint name="front_left_wheel_joint">
-      <param name="can_id">4</param>
+      <param name="can_id">1</param>
       <param name="inverted">true</param>
       <command_interface name="velocity"/>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
     </joint>
     <joint name="middle_left_wheel_joint">
-      <param name="can_id">5</param>
+      <param name="can_id">2</param>
       <param name="inverted">true</param>
       <command_interface name="velocity"/>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
     </joint>
     <joint name="back_left_wheel_joint">
-      <param name="can_id">6</param>
+      <param name="can_id">3</param>
       <param name="inverted">true</param>
       <command_interface name="velocity"/>
       <state_interface name="position"/>
