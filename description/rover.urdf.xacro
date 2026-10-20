@@ -142,7 +142,7 @@
     <hardware>
       <plugin>storm_teleop/SparkCanHardware</plugin>
       <param name="can_interface">can0</param>
-      <param name="gear_ratio">81.0</param>
+      <param name="gear_ratio">9.0</param>
       <!-- Persist config to each SPARK's flash. Keep false for normal use
            (config is re-applied over CAN every launch). Set true for a single
            launch to commit a new persistent baseline, then set back to false. -->

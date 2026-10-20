@@ -72,7 +72,7 @@ private:
 
   // Config read from URDF <hardware> params
   std::string can_interface_;
-  double gear_ratio_{81.0};
+  double gear_ratio_{9.0};
 
   // When true, persist the applied config to each SPARK's flash in
   // on_configure. Leave false for normal use — on_configure re-applies the

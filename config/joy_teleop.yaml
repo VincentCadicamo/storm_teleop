@@ -45,17 +45,17 @@ teleop_twist_joy_node:
     # flip the sign via the scale. Flip an axis's sign here if a stick feels
     # backwards; the magnitudes are the real speed limits.
     #
-    # Physics limits with 81:1 + NEO V1.1:
-    #   theoretical max linear  ≈ 0.70 m/s
-    #   theoretical max angular ≈ 1.62 rad/s
+    # Physics limits with 9:1 + NEO V1.1:
+    #   theoretical max linear  ≈ 6.29 m/s
+    #   theoretical max angular ≈ 14.6 rad/s
     scale_linear:
-      x: -0.3                 # m/s — normal forward speed (negated: push forward = forward)
+      x: -2.7                 # m/s — normal forward speed (negated: push forward = forward)
     scale_linear_turbo:
-      x: -0.6                 # m/s — turbo (≈86% of theoretical max)
+      x: -5.4                 # m/s — turbo (≈86% of theoretical max)
     scale_angular:
-      yaw: -0.7               # rad/s — normal turn rate (negated: push left = turn left)
+      yaw: -6.2               # rad/s — normal turn rate (negated: push left = turn left)
     scale_angular_turbo:
-      yaw: -1.4               # rad/s — turbo turn rate
+      yaw: -12.5              # rad/s — turbo turn rate
 
     # --- Deadman / enable ---
     # MUST hold A to move. Release = instant zero-velocity publish.

@@ -66,19 +66,19 @@ diff_drive_controller:
     # These are the controller's internal clamps. They should match or
     # exceed teleop limits so the controller doesn't silently eat commands.
     #
-    # Physics ceiling with 81:1 gearing + NEO V1.1:
-    #   max linear  ≈ 0.70 m/s   (5676 RPM / 81 → wheel rad/s × radius)
-    #   max angular ≈ 1.62 rad/s  (pure point-turn, both sides at max)
+    # Physics ceiling with 9:1 gearing + NEO V1.1:
+    #   max linear  ≈ 6.29 m/s   (5676 RPM / 9 → wheel rad/s × radius)
+    #   max angular ≈ 14.6 rad/s  (pure point-turn, both sides at max)
     #
     # We clamp slightly below theoretical max to leave PID headroom.
     linear.x.has_velocity_limits: true
-    linear.x.max_velocity:  0.6     # m/s — hard ceiling
+    linear.x.max_velocity:  5.4     # m/s — hard ceiling
     linear.x.has_acceleration_limits: true
     linear.x.max_acceleration: 1.0  # m/s² — smooth ramp-up
     linear.x.has_jerk_limits: false
 
     angular.z.has_velocity_limits: true
-    angular.z.max_velocity:  1.4    # rad/s — hard ceiling
+    angular.z.max_velocity:  12.5   # rad/s — hard ceiling
     angular.z.has_acceleration_limits: true
     angular.z.max_acceleration: 2.0 # rad/s²
     angular.z.has_jerk_limits: false
